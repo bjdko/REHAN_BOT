@@ -7,7 +7,7 @@ import aiohttp
 
 import config
 
-history_path = "./data/history"
+history_path = "./data/history/"
 os.makedirs(history_path, exist_ok=True)
 
 
@@ -47,7 +47,7 @@ def split_string(kalimat_panjang, max_length=1900):
 
 
 def load(userid):
-    filename = f"{history_path}/{userid}.json"
+    filename = os.path.join(history_path, f"{userid}.json")
     if os.path.exists(filename):
         with open(filename, 'r') as file:
             _data = json.load(file)
@@ -64,22 +64,21 @@ def load(userid):
 
 
 def save(userid, _data):
-    os.makedirs(history_path, exist_ok=True)
-    filename = f"{history_path}/{userid}.json"
+    filename = os.path.join(history_path, f"{userid}.json")
     with open(filename, 'w') as file:
         json.dump(_data, file)
 
 
 def reset_data(userid):
-    filename = f"{history_path}/{userid}.json"
+    filename = os.path.join(history_path, f"{userid}.json")
     if os.path.exists(filename):
         os.remove(filename)
     load(userid)
 
 
 async def react(prompt):
-    os.makedirs("./data", exist_ok=True)
     emote_data_path = "./data/emoji_data.json"
+    os.makedirs(emote_data_path, exist_ok=True)
     if not os.path.exists(emote_data_path):
         return "Gatau"
 
@@ -115,7 +114,8 @@ async def instant_one_timers(prompt=None, userid=None, jason=None):
         }
 
     if userid:
-        if os.path.exists(f"{history_path}/{userid}.json"):
+        filename = os.path.join(history_path, f"{userid}.json")
+        if os.path.exists(filename):
             _ass = load(userid)
             jason["system_instruction"]["parts"]["text"] = _ass["system_instruction"]["parts"]["text"]
 
