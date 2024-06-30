@@ -15,7 +15,7 @@ logging.basicConfig(filename='logs/bot.log',
                     format='%(asctime)s:%(levelname)s:%(name)s: %(message)s')
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='..', intents=intents, help_command=None)
+bot = commands.Bot(command_prefix=config.BOT_PREFIX, intents=intents, help_command=None)
 
 mabar_tebakan = {}
 
