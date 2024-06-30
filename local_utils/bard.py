@@ -1,65 +1,53 @@
+import asyncio
 import json
 import os
-import time
-import aiohttp
-import asyncio
+from typing import Literal
 
-import requests
+import aiohttp
 
 import config
 
-from typing import Literal
-
-
-# data_tebakan = {}
+history_path = "./data/history"
+os.makedirs(history_path, exist_ok=True)
 
 
 def generate_template(role: Literal["user", "model"], prompt: str):
     return {"role": role, "parts": [{"text": prompt}]}
 
 
-def reset_tebakan():
-    # global data_tebakan
-    data_tebakan = {
-        "system_instruction": {
-            "parts": {
-                "text": ""
-            }
-        },
-        "contents": [],
-    }
-
-
 async def chat_ai(userid, prompt):
     _data = load(userid)
     _data["contents"].append(generate_template("user", prompt))
     response_json = await asinkronus_bard(_data)
+    response_text = safety_check_etc(response_json)
+    _data["contents"].append(generate_template("model", response_text))
     save(userid, _data)
-    return await safety_check_etc(response_json)
+    return split_string(response_text)
 
 
 def split_string(kalimat_panjang, max_length=1900):
-    chunks = []
-    current_chunk = ""
-    words = kalimat_panjang.split()
-
-    for word in words:
-        # Periksa apakah penambahan kata sesuai dengan panjang maksimal
-        if len(current_chunk) + 1 + len(word) <= max_length:
-            current_chunk += " " + word if current_chunk else word
-        else:
-            # Jika tidak sesuai, tambahkan potongan saat ini ke daftar dan mulai yang baru
-            chunks.append(current_chunk)
-            current_chunk = word
-
-    # Tambahkan bagian terakhir kl g kosong
-    if current_chunk:
-        chunks.append(current_chunk)
-    return chunks
+    messages = []
+    if len(kalimat_panjang) > max_length:
+        kata = kalimat_panjang.split()
+        pesan_sekarang = ""
+        for kata_sekarang in kata:
+            if len(pesan_sekarang + kata_sekarang) + 1 > max_length:
+                messages.append(pesan_sekarang)
+                pesan_sekarang = kata_sekarang
+            else:
+                if pesan_sekarang:
+                    pesan_sekarang += " " + kata_sekarang
+                else:
+                    pesan_sekarang = kata_sekarang
+        if pesan_sekarang:
+            messages.append(pesan_sekarang)
+    else:
+        messages.append(kalimat_panjang)
+    return messages
 
 
 def load(userid):
-    filename = f"./data/history/{userid}.json"
+    filename = f"{history_path}/{userid}.json"
     if os.path.exists(filename):
         with open(filename, 'r') as file:
             _data = json.load(file)
@@ -76,20 +64,25 @@ def load(userid):
 
 
 def save(userid, _data):
-    directory = "./data/history"
-    os.makedirs(directory, exist_ok=True)
-    filename = os.path.join(directory, f"{userid}.json")
+    os.makedirs(history_path, exist_ok=True)
+    filename = f"{history_path}/{userid}.json"
     with open(filename, 'w') as file:
         json.dump(_data, file)
 
 
 def reset_data(userid):
-    filename = f"./data/history/{userid}.json"
+    filename = f"{history_path}/{userid}.json"
     if os.path.exists(filename):
         os.remove(filename)
+    load(userid)
 
 
 async def react(prompt):
+    os.makedirs("./data", exist_ok=True)
+    emote_data_path = "./data/emoji_data.json"
+    if not os.path.exists(emote_data_path):
+        return "Gatau"
+
     with open("./data/emoji_data.json", "r") as bvedrfcg:
         libraryge = json.load(bvedrfcg)
     _sementara = []
@@ -104,35 +97,38 @@ async def react(prompt):
     initial_msg = "\n\n".join(_sementara)
     payload = {"contents": [{"parts": [{"text": initial_msg + "\n" + tambahan}]}]}
     response_json = await asinkronus_bard(payload, config.API_URL_2)
-    jawab = await safety_check_etc(response_json)
-    ribet = jawab[0].strip()
+    jawab = safety_check_etc(response_json)
+    ribet = jawab.strip()
     for emot in libraryge:
         if emot.lower() == ribet.lower():
             return libraryge[emot]["emote_url"]
     return "Gatau"
 
 
-async def one_timers(prompt, userid=None):
-    jason = {
-        "system_instruction": {
-            "parts": {"text": "useful assistant, solid and concise and clear"}
-        },
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}]
-    }
+async def instant_one_timers(prompt=None, userid=None, jason=None):
+    if not jason:
+        jason = {
+            "system_instruction": {
+                "parts": {"text": "useful assistant, solid and concise and clear"}
+            },
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}]
+        }
+
     if userid:
-        if os.path.exists(f"./data/history/{userid}.json"):
+        if os.path.exists(f"{history_path}/{userid}.json"):
             _ass = load(userid)
             jason["system_instruction"]["parts"]["text"] = _ass["system_instruction"]["parts"]["text"]
 
     response_json = await asinkronus_bard(jason)
-    return await safety_check_etc(response_json)
+    response_text = safety_check_etc(response_json)
+    return split_string(response_text)
 
 
 async def asinkronus_bard(_json, api_url=config.API_URL):
     headers = {"Content-Type": "application/json"}
     async with aiohttp.ClientSession() as session:
         retry_count = 0
-        while retry_count < 5:
+        while retry_count < 100:
             async with session.post(api_url, headers=headers, json=_json,
                                     params={"key": config.API_KEY}) as response:
                 if response.status == 429:
@@ -142,27 +138,27 @@ async def asinkronus_bard(_json, api_url=config.API_URL):
                     retry_count += 1
                 else:
                     return await response.json()
-                print(f"retry_count limit exceeded (5x) xddinside")
+        print(f"tried and fails {retry_count}x times")
 
 
-async def safety_check_etc(response_json):
+def safety_check_etc(response_json: dict) -> str:
     if "candidates" in response_json:
         candidate = response_json["candidates"][0]
         if "content" in candidate:
             response_text = candidate["content"]["parts"][0]["text"]
-            return split_string(response_text)
+            return response_text
         elif candidate.get("finishReason") == "SAFETY":
             # Handle safety stop
-            return ["The response was stopped due to safety concerns."]
+            return "The response was stopped due to safety concerns."
         else:
             # Handle other cases
-            return ["The response was stopped due to an unknown reason."]
+            return "The response was stopped due to an unknown reason."
     else:
         error_message = response_json.get('error',
                                           {}).get('message',
                                                   'Unknown error occurred')
         print(f"Error: {error_message}")
-        return [f"Sorry, I couldn't process your request: {error_message}"]
+        return f"Sorry, I couldn't process your request: {error_message}"
 
 
 async def acting(userid, prompt):
@@ -176,4 +172,4 @@ async def acting(userid, prompt):
             response_text = candidate["content"]["parts"][0]["text"]
             _data["contents"].append(generate_template("model", response_text))
             save(userid, _data)
-    return await safety_check_etc(response_json)
+    return split_string(safety_check_etc(response_json))
