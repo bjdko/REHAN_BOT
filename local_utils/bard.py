@@ -8,10 +8,13 @@ import requests
 
 import config
 
-# data_tebakan = {}
-mabar_tebakan = {}
+from typing import Literal
 
-def generate_template(role, prompt):
+
+# data_tebakan = {}
+
+
+def generate_template(role: Literal["user", "model"], prompt: str):
     return {"role": role, "parts": [{"text": prompt}]}
 
 
@@ -27,76 +30,32 @@ def reset_tebakan():
     }
 
 
-def tebakan(prompt, userid):
-    # global data_tebakan
-    headers = {"Content-Type": "application/json"}
-    data_tebakan["contents"].append(generate_template("user", prompt))
-    response = requests.post(config.API_URL,
-                             headers=headers,
-                             json=data_tebakan,
-                             params={"key": config.API_KEY})
-    while response.status_code == 429:
-        retry_after = int(response.headers.get("Retry-After", 1))
-        print(f"Rate limited. Retrying after {retry_after} seconds.")
-        time.sleep(retry_after)
-        response = requests.post(config.API_URL,
-                                 headers=headers,
-                                 json=data_tebakan,
-                                 params={"key": config.API_KEY})
-    response_json = response.json()
-    if "candidates" in response_json:
-        candidate = response_json["candidates"][0]
-        if "content" in candidate:
-            response_text = candidate["content"]["parts"][0]["text"]
-            data_tebakan["contents"].append(
-                generate_template("model", response_text))
-            directory = "./data/history"
-            if not os.path.exists(directory):
-                os.makedirs(directory)
-            filename = f"{directory}/{userid}_sesitebakan.json"
-            with open(filename, 'w') as file:
-                json.dump(data_tebakan, file)
-            return split_string(response_text)
-        elif candidate.get("finishReason") == "SAFETY":
-            # Handle safety stop
-            return ["The response was stopped due to safety concerns."]
-        else:
-            # Handle other cases
-            return ["The response was stopped due to an unknown reason."]
-    else:
-        error_message = response_json.get('error',
-                                          {}).get('message',
-                                                  'Unknown error occurred')
-        print(f"Error: {error_message}")
-        return [f"Sorry, I couldn't process your request: {error_message}"]
-
-
 async def chat_ai(userid, prompt):
     _data = load(userid)
     _data["contents"].append(generate_template("user", prompt))
     response_json = await asinkronus_bard(_data)
+    save(userid, _data)
     return await safety_check_etc(response_json)
 
 
-def split_string(kalimat_panjang):
-    messages = []
-    if len(kalimat_panjang) > 2000:
-        kata = kalimat_panjang.split()
-        pesan_sekarang = ""
-        for kata_sekarang in kata:
-            if len(pesan_sekarang + kata_sekarang) + 1 > 2000:
-                messages.append(pesan_sekarang)
-                pesan_sekarang = kata_sekarang
-            else:
-                if pesan_sekarang:
-                    pesan_sekarang += " " + kata_sekarang
-                else:
-                    pesan_sekarang = kata_sekarang
-        if pesan_sekarang:
-            messages.append(pesan_sekarang)
-    else:
-        messages.append(kalimat_panjang)
-    return messages
+def split_string(kalimat_panjang, max_length=1900):
+    chunks = []
+    current_chunk = ""
+    words = kalimat_panjang.split()
+
+    for word in words:
+        # Periksa apakah penambahan kata sesuai dengan panjang maksimal
+        if len(current_chunk) + 1 + len(word) <= max_length:
+            current_chunk += " " + word if current_chunk else word
+        else:
+            # Jika tidak sesuai, tambahkan potongan saat ini ke daftar dan mulai yang baru
+            chunks.append(current_chunk)
+            current_chunk = word
+
+    # Tambahkan bagian terakhir kl g kosong
+    if current_chunk:
+        chunks.append(current_chunk)
+    return chunks
 
 
 def load(userid):
@@ -143,7 +102,9 @@ async def react(prompt):
     description but not too perfectly matched. Reply with just emote name without saying anything else"
 
     initial_msg = "\n\n".join(_sementara)
-    jawab = await ask_emoji(initial_msg, tambahan)
+    payload = {"contents": [{"parts": [{"text": initial_msg + "\n" + tambahan}]}]}
+    response_json = await asinkronus_bard(payload, config.API_URL_2)
+    jawab = await safety_check_etc(response_json)
     ribet = jawab[0].strip()
     for emot in libraryge:
         if emot.lower() == ribet.lower():
@@ -151,21 +112,18 @@ async def react(prompt):
     return "Gatau"
 
 
-async def ask_emoji(initial_msg, actual_msg):
-    headers = {"Content-Type": "application/json"}
-
-    payload = {"contents": [{"parts": [{"text": initial_msg + "\n" + actual_msg}]}]}
-    response_json = await asinkronus_bard(payload, config.API_URL_2)
-    return await safety_check_etc(response_json)
-
-
-async def one_timers(prompt):
+async def one_timers(prompt, userid=None):
     jason = {
         "system_instruction": {
             "parts": {"text": "useful assistant, solid and concise and clear"}
         },
         "contents": [{"role": "user", "parts": [{"text": prompt}]}]
     }
+    if userid:
+        if os.path.exists(f"./data/history/{userid}.json"):
+            _ass = load(userid)
+            jason["system_instruction"]["parts"]["text"] = _ass["system_instruction"]["parts"]["text"]
+
     response_json = await asinkronus_bard(jason)
     return await safety_check_etc(response_json)
 
@@ -212,7 +170,6 @@ async def acting(userid, prompt):
     _data["system_instruction"]["parts"]["text"] = f"you shall act as {prompt}"
     _data["contents"].append(generate_template("user", prompt))
     response_json = await asinkronus_bard(_data)
-    print(response_json)
     if "candidates" in response_json:
         candidate = response_json["candidates"][0]
         if "content" in candidate:
