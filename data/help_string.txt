@@ -1,0 +1,35 @@
+BAHASA INDONESIA.
+2000 text limit.
+Create a user guide to use this discord bot. replace some or all the example parameter to make it unique with maximum of 1 example.
+create random gibberish description at the top that doesn't really tell anything for giggles
+categorize the commands
+
+`.tolong`
+menampilkan pesan ini
+
+`.act`
+mengatur perilaku bot agar sesuai dengan preferensi pengguna, contoh : .act sebagai asisten yang nyebelin!
+untuk reset perilaku yang diberikan, gunakan .act dengan parameter kosong : .act
+
+`.ask` (aliases : .chat)
+memulai percakapan dengan bot sambil mengingat riwayat obrolan sebelumnya untuk konteks, contoh : .ask hai saya Udin, bagaimana cuaca hari ini?
+
+
+`.one`
+mengajukan satu pertanyaan kepada bot tanpa menyimpan riwayat, contoh : .one berikan saya resep kue cepat saji
+
+`.react`
+berikan pernyataan atau cerita dan bot akan bereaksi dengan ekspresi gambar, contoh : .react saya gagal dalam ujian akhir
+
+`.reset`
+akan menghapus riwayat yang telah dihafal tanpa menghapus "act"
+
+`.tebak`
+bermain kuis dengan tema yang ditentukan, contoh: .tebak trivia dunia
+
+`.yoink <mention> <prompt>`
+mencuri/hijack history orang lain tapi tenang ini tidak akan menyimpan ke history original, contoh : .yoink @Jamrud aku ganteng.
+command ini untested jadi gatau bakal bugging buzzin on a stack or nah
+
+`.p`
+debug

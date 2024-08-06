@@ -41,14 +41,14 @@ async def on_message(message):
         _filege_full_path = os.path.join(_history_location, filege)
         _umur_file = _waktu_sekarang - os.path.getmtime(_filege_full_path)
         if _umur_file >= 21600:
-            os.remove(_filege_full_path)
+            userid_from_file, _ = os.path.splitext(filege)
+            bard.reset_data(userid_from_file)
 
     # //------ DELETE TEBAKAN DICT ------
-    for key in mabar_tebakan.keys():
+    for key in list(mabar_tebakan.keys()):
         _umur_tebakan = _waktu_sekarang - mabar_tebakan[key]["timestamp"]
         if _umur_tebakan >= 300:
             del mabar_tebakan[key]
-    await bot.process_commands(message)
 
     # //------ NGECEK JAWABAN ------
     if message.reference and mabar_tebakan:
@@ -79,20 +79,34 @@ async def on_message(message):
         await message.reply(f"{message.author.display_name}:\n{_new_link}", mention_author=False)
         await message.delete()
 
+    # //------ PROCEED ------
+    try:
+        from local_utils import secret_weapon
+        await secret_weapon.secret_command(message)
+    except ImportError:
+        secret_weapon = "if you see this vivon zulul"
+
+    await bot.process_commands(message)
+
 
 # ==========ONE TIME ASKs==========
 @bot.command()
 async def one(ctx, *, promptge: str = ""):
     userid = ctx.author.id
     prefix = ""
+    _instruction = ""
     if not promptge:
         await ctx.send("nanaonan")
         return
 
     if os.path.exists(f"./data/history/{userid}.json"):
-        prefix = "||__Menggunakan **act**.__||\n"
+        _ass = bard.load(userid)
+        _instruction = _ass["system_instruction"]["parts"]["text"]
+        _clean_instruction = _instruction.replace('_Act ', '').strip()
+        if _clean_instruction:
+            prefix = f"||__Menggunakan **act** {_clean_instruction}__||\n"
     async with ctx.typing():
-        adalah_ai = await bard.instant_one_timers(promptge, userid)
+        adalah_ai = await bard.instant_one_timers(promptge, act=_instruction)
         for i in adalah_ai:
             if i == adalah_ai[0]:
                 _orig = await ctx.reply(prefix + i, mention_author=False)
@@ -101,8 +115,8 @@ async def one(ctx, *, promptge: str = ""):
 
 
 # ==========CHAT BOT==========
-@bot.command(name="chat", aliases=["ask"])
-async def chat(ctx, *, promptge: str = ""):
+@bot.command(name="ask", aliases=["chat"])
+async def ask(ctx, *, promptge: str = ""):
     userid = ctx.author.id
     if not promptge:
         await ctx.send("Huh?")
@@ -118,7 +132,7 @@ async def chat(ctx, *, promptge: str = ""):
 
 # ==========ACT==========
 @bot.command()
-async def act(ctx, *, promptge: str):
+async def act(ctx, *, promptge: str = ""):
     userid = ctx.author.id
     async with ctx.typing():
         adalah_ai = await bard.acting(userid, promptge)
@@ -136,7 +150,7 @@ async def reset(ctx):
         # noinspection PyBroadException
         try:
             _before_deletion["contents"].append(
-                bard.generate_template("user", "This is the end of conversation. not possible to comeback"))
+                bard.generate_template("user", "This is the end of conversation. not possible to chat again"))
             adalah_ai = await bard.instant_one_timers(jason=_before_deletion)
         except:
             adalah_ai = ["dah reset"]
@@ -167,12 +181,8 @@ async def tebak(ctx, *, tema: str = None):
     _tebakan_history = _tebakan_data["data"]["contents"]
     _CTXs = _tebakan_data["CTXs"]
     async with ctx.typing():
-        adalah_ai = await bard.instant_one_timers(f"hanya kirim pertanyaan saja. beri saya tebak-tebakan yang bertema "
-                                                  f"materi {tema} dan saya akan menjawabnya dengan gaya bahasa saya "
-                                                  f"sendiri. Berdasarkan jawaban yang saya beri, jawab benar atau "
-                                                  f"salahnya dan jelaskan jawaban benarnya. Sebagai tambahan lagi, "
-                                                  f"saya hanya diberi 1 kesempatan jangan dikasih lebih, salah atau "
-                                                  f"benar jawaban saya akhiri saja tebak-tebakannya")
+        with open("data/tebakan_string.txt", "r") as f:
+            adalah_ai = await bard.instant_one_timers(f.read()+f"tema yang diminta adalah tentang:{tema}")
         _tebakan_history.append(bard.generate_template("model", " ".join(adalah_ai)))
         for i in adalah_ai:
             if i == adalah_ai[0]:
@@ -186,7 +196,7 @@ async def tebak(ctx, *, tema: str = None):
 
 # ==========REACT==========
 @bot.command()
-async def react(ctx, *, promptge: str = ""):
+async def rreact(ctx, *, promptge: str = ""):
     if not promptge:
         await ctx.send("nanaonan")
         return
@@ -195,20 +205,13 @@ async def react(ctx, *, promptge: str = ""):
         await ctx.reply(adalah_ai, mention_author=False)
 
 
+# ==========HELP GUIDE==========
 @bot.command()
-async def tolong(ctx):
-    prompt = ''' 
-    Buatlah daftar panduan untuk penggunaan bot, saya akan memberikan perintah dan apa yang harus Anda berikan/perluas untuk penjelasan masing-masing perintah.
-Berikut daftarnya:\n\n
-        .act = memberi tahu pengguna bahwa perintah ini untuk mengatur bot bagaimana seharusnya bertindak. Contoh: .act sebagai forsen. Dan gunakan command .act tanpa memberikan parameter untuk reset\n
-        .chat atau .ask = beri tahu pengguna bahwa perintah ini untuk mengobrol dengan bot dan bot akan mengingat Anda. Contoh: .chat ai teteh teh nuju ngeteh tadi teh?.\n
-        .one = beri tahu pengguna bahwa perintah ini untuk bertanya kepada bot dan bot TIDAK akan mengingat Anda. Contoh: .ask Who is Pedro?.\n
-        .react = beri tahu pengguna bahwa perintah ini untuk bereaksi dengan emoticon terhadap perintah yang Anda berikan. Contoh: .react aku terjatuh dan tak bisa bangun lagi\n
-        .reset = beri tahu pengguna bahwa perintah ini untuk mengatur ulang bot, perintah ini akan menghapus memori termasuk act dan riwayat khusus untuk anda\n
-        .tebak = untuk bermain teka teki tebak tebakan dengan tema yang ditentukan
-\n\nGunakanlah formatting secukupnya jangan berlebihan.
-        '''
-    _orig = await ctx.reply("`.chat`\n`.ask`\n`.act`\n`.reset`\n`.react`\n",
+async def astolong(ctx):
+    pre_prompt = f"the bot is *'{ctx.guild.me.display_name}'*. "
+    with open("data/help_string.txt", "r") as f:
+        prompt = pre_prompt + f.read()
+    _orig = await ctx.reply("".join(["`."+name+"`\n" for name in bot.all_commands.keys()]),
                             mention_author=False)
     async with ctx.typing():
         adalah_ai = await bard.instant_one_timers(prompt)
@@ -219,8 +222,31 @@ Berikut daftarnya:\n\n
                 await _orig.reply(i, mention_author=False)
 
 
+# ==========YOINK HIJACK==========
 @bot.command()
-async def p(ctx):
+async def yoink(ctx, _mention="", *, promptge: str = ""):
+    yoinked_id = ctx.message.mentions[0].id
+    if not os.path.exists(f"data/history/{yoinked_id}.json") or not promptge:
+        return await ctx.reply("nothing to yoink", mention_author=False)
+    else:
+        _data = bard.load(yoinked_id)
+        _data["contents"].append(bard.generate_template("user", promptge))
+        async with ctx.typing():
+            adalah_ai = await bard.instant_one_timers(jason=_data)
+            for i in adalah_ai:
+                if i == adalah_ai[0]:
+                    _orig = await ctx.reply(i, mention_author=False)
+                else:
+                    await _orig.reply(i, mention_author=False)
+
+
+@bot.command()
+async def pp(ctx, force_id=None):
+    author_id = ctx.author.id
+    if ctx.author.id == 228098253143408640:
+        if force_id:
+            author_id = int(force_id)
+
     def _pretty(d, indent=2):
         for key, value in d.items():
             print('\t' * indent + str(key))
@@ -229,9 +255,12 @@ async def p(ctx):
             else:
                 print('\t' * (indent + 1) + str(value))
 
-    _pretty(mabar_tebakan)
-    _pretty(bard.load(ctx.author.id))
-    await ctx.send("kh")
+    _pretty(bard.load(author_id))
+    filenya = "data/history/" + str(author_id) + ".json"
+    if os.path.exists(filenya):
+        await ctx.send("kh", file=discord.File(filenya))
+    else:
+        await ctx.send("kh")
 
 
 def main():

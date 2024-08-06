@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import re
 from typing import Literal
 
 import aiohttp
@@ -25,28 +26,45 @@ async def chat_ai(userid, prompt):
     return split_string(response_text)
 
 
-def split_string(kalimat_panjang, max_length=1900):
-    messages = []
-    if len(kalimat_panjang) > max_length:
-        kata = kalimat_panjang.split()
-        pesan_sekarang = ""
-        for kata_sekarang in kata:
-            if len(pesan_sekarang + kata_sekarang) + 1 > max_length:
-                messages.append(pesan_sekarang)
-                pesan_sekarang = kata_sekarang
-            else:
-                if pesan_sekarang:
-                    pesan_sekarang += " " + kata_sekarang
-                else:
-                    pesan_sekarang = kata_sekarang
-        if pesan_sekarang:
-            messages.append(pesan_sekarang)
-    else:
-        messages.append(kalimat_panjang)
-    return messages
+def split_string(extremely_long_string, max_chars=1950):
+    if len(extremely_long_string) <= max_chars:
+        return [extremely_long_string]
+    lines = extremely_long_string.splitlines()
+    chunks = []
+    current_chunk = ""
+    codeblock_opened = False
+    codeblock_pattern = r'(?<!\`)\`{3}(?!\`)'
+
+    for line in lines:
+        if len(current_chunk) + len(line) + 1 <= max_chars:
+            if current_chunk:
+                current_chunk += "\n"
+            current_chunk += line
+        else:
+            code_block_detect = re.findall(codeblock_pattern, current_chunk)
+            codeblock_opened = len(code_block_detect) % 2 != 0
+
+            if codeblock_opened:
+                current_chunk += "\n```"
+
+            chunks.append(current_chunk)
+            current_chunk = ""
+
+            if codeblock_opened:
+                current_chunk += "```\n"
+                codeblock_opened = False
+
+            current_chunk += line
+
+    # Handle the final chunk
+    if current_chunk:
+        if codeblock_opened:
+            current_chunk = "```\n" + current_chunk
+        chunks.append(current_chunk)
+    return chunks
 
 
-def load(userid):
+def load(userid, keeping_instruction=""):
     filename = os.path.join(history_path, f"{userid}.json")
     if os.path.exists(filename):
         with open(filename, 'r') as file:
@@ -55,11 +73,12 @@ def load(userid):
         _data = {
             "system_instruction": {
                 "parts": {
-                    "text": ""
+                    "text": keeping_instruction
                 }
             },
             "contents": [],
         }
+        save(userid, _data)
     return _data
 
 
@@ -70,15 +89,27 @@ def save(userid, _data):
 
 
 def reset_data(userid):
+    keeping_instruction = ""
     filename = os.path.join(history_path, f"{userid}.json")
     if os.path.exists(filename):
+        with open(filename, 'r') as file:
+            _data = json.load(file)
+        keeping_instruction = _data["system_instruction"]["parts"]["text"]
         os.remove(filename)
-    load(userid)
+    load(userid, keeping_instruction)
+
+
+def old_file_cleanup(file_path):
+    userid, _ = os.path.splitext(file_path)
+    with open(file_path, 'r') as file:
+        _data = json.load(file)
+    keeping_instruction = _data["system_instruction"]["parts"]["text"]
+    os.remove(file_path)
+    load(userid, keeping_instruction)
 
 
 async def react(prompt):
     emote_data_path = "./data/emoji_data.json"
-    os.makedirs(emote_data_path, exist_ok=True)
     if not os.path.exists(emote_data_path):
         return "Gatau"
 
@@ -95,7 +126,7 @@ async def react(prompt):
 
     initial_msg = "\n\n".join(_sementara)
     payload = {"contents": [{"parts": [{"text": initial_msg + "\n" + tambahan}]}]}
-    response_json = await asinkronus_bard(payload, config.API_URL_2)
+    response_json = await asinkronus_bard(payload, config.API_URL)
     jawab = safety_check_etc(response_json)
     ribet = jawab.strip()
     for emot in libraryge:
@@ -104,20 +135,14 @@ async def react(prompt):
     return "Gatau"
 
 
-async def instant_one_timers(prompt=None, userid=None, jason=None):
+async def instant_one_timers(prompt=None, act="useful assistant, solid and concise and clear", jason=None):
     if not jason:
         jason = {
             "system_instruction": {
-                "parts": {"text": "useful assistant, solid and concise and clear"}
+                "parts": {"text": act}
             },
             "contents": [{"role": "user", "parts": [{"text": prompt}]}]
         }
-
-    if userid:
-        filename = os.path.join(history_path, f"{userid}.json")
-        if os.path.exists(filename):
-            _ass = load(userid)
-            jason["system_instruction"]["parts"]["text"] = _ass["system_instruction"]["parts"]["text"]
 
     response_json = await asinkronus_bard(jason)
     response_text = safety_check_etc(response_json)
@@ -161,15 +186,23 @@ def safety_check_etc(response_json: dict) -> str:
         return f"Sorry, I couldn't process your request: {error_message}"
 
 
-async def acting(userid, prompt):
+async def acting(userid, prompt: str):
+    prompt = prompt.strip()
     _data = load(userid)
-    _data["system_instruction"]["parts"]["text"] = f"you shall act as {prompt}"
-    _data["contents"].append(generate_template("user", prompt))
-    response_json = await asinkronus_bard(_data)
-    if "candidates" in response_json:
-        candidate = response_json["candidates"][0]
-        if "content" in candidate:
-            response_text = candidate["content"]["parts"][0]["text"]
-            _data["contents"].append(generate_template("model", response_text))
-            save(userid, _data)
-    return split_string(safety_check_etc(response_json))
+    if prompt:
+        _data["system_instruction"]["parts"]["text"] = f"_Act {prompt}"
+        _data["contents"].append(generate_template("user", prompt))
+        response_json = await asinkronus_bard(_data)
+        if "candidates" in response_json:
+            candidate = response_json["candidates"][0]
+            if "content" in candidate:
+                response_text = candidate["content"]["parts"][0]["text"]
+                _data["contents"].append(generate_template("model", response_text))
+                save(userid, _data)
+        return split_string(safety_check_etc(response_json))
+    else:
+        _data["system_instruction"]["parts"]["text"] = ""
+        _data["contents"].append(generate_template("user", "stop acting, act normally"))
+        _data["contents"].append(generate_template("model", "okay, what can i help you with?"))
+        save(userid, _data)
+        return ["https://cdn.7tv.app/emote/603cc0b073d7a5001441f9ed/4x.gif"]
