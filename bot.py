@@ -196,7 +196,7 @@ async def tebak(ctx, *, tema: str = None):
 
 # ==========REACT==========
 @bot.command()
-async def rreact(ctx, *, promptge: str = ""):
+async def react(ctx, *, promptge: str = ""):
     if not promptge:
         await ctx.send("nanaonan")
         return
@@ -207,7 +207,7 @@ async def rreact(ctx, *, promptge: str = ""):
 
 # ==========HELP GUIDE==========
 @bot.command()
-async def astolong(ctx):
+async def tolong(ctx):
     pre_prompt = f"the bot is *'{ctx.guild.me.display_name}'*. "
     with open("data/help_string.txt", "r") as f:
         prompt = pre_prompt + f.read()
@@ -241,7 +241,7 @@ async def yoink(ctx, _mention="", *, promptge: str = ""):
 
 
 @bot.command()
-async def pp(ctx, force_id=None):
+async def p(ctx, force_id=None):
     author_id = ctx.author.id
     if ctx.author.id == 228098253143408640:
         if force_id:
